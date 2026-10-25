@@ -31,20 +31,24 @@
 同一 Gradle 工程下的 `windows/` 模块，**Java 21 + Swing** 编写，支持在 Windows 上多开任意软件——微信、QQ、Chrome、游戏都能开多个实例。打包为**程序目录 + zip**（不是单文件 exe，方便分发）。
 
 - 自动检测本机常见软件，也可手动添加任意 .exe
-- **四种多开方式**（每种软件选最合适的，一种不行就换另一种）：
+- **六种多开方式**（每种软件选最合适的，一种不行就换另一种）：
   - 直接启动：无单实例限制的软件
   - 复制目录 + 改名：绕过按进程名检测单实例的软件（微信、PCL）
   - 数据目录隔离：Chrome / Edge 等 Chromium 软件（`--user-data-dir`）
-  - 智能多开：先直接启动，检测到同名进程在运行就自动改用复制目录 + 改名
+  - **互斥体绕过（内置）**：挂起启动 → 注入自研组件 → 给互斥体名加进程后缀，
+    互斥体级单实例软件（PCL2 等）也能多开，**无需安装任何外部软件**
+  - 沙盒多开：每个实例放独立 Sandboxie 沙盒（可选，需要时自装）
+  - 智能多开：自动逐级尝试 直接启动 → 复制目录 + 改名 → 互斥体绕过，
+    这个不行就自动换下一个，几乎覆盖所有软件
 - 复制目录时 `.minecraft` 等大目录用目录链接（junction）共享，不整份复制
 - 一键冻结 / 解冻全部多开实例（挂起 / 恢复进程）
 - 定时自动冻结 / 解冻
 - 检查更新（对比 GitHub 最新版本）
 - 深色 / 浅色主题切换
 
-> 实测：PCL2 用「互斥体」检测单实例，改名 / 换目录均无效，需配合沙盒
-> （Sandboxie-Plus，免费开源）或再装一个 HMCL 搭配双开。程序会在副本
-> 3 秒内退出时自动提示处理方向。
+> 实测：PCL2 用「互斥体」检测单实例，改名 / 换目录均无效；v1.0.3 起内置
+> 互斥体绕过组件（源码在 `windows/src/native/`，C 编写、GPL），实测双开成功，
+> 不再依赖任何外部沙盒软件。个别安全软件可能拦截注入，把程序目录加入白名单即可。
 
 构建好的 zip 在 GitHub Release 中下载（解压后运行 `MultiOpener-Windows.exe`）。
 
@@ -66,14 +70,26 @@ gradle :windows:packageZip
 产物：
 
 - 安卓：`app/build/outputs/apk/release/app-release.apk`
-- Windows：`windows/build/dist/MultiOpener-Windows/`（程序目录）、`windows/build/dist/MultiOpener-Windows-1.0.0.zip`
+- Windows：`windows/build/dist/MultiOpener-Windows/`（程序目录）、`windows/build/dist/MultiOpener-Windows-1.0.3.zip`
 
 ## 目录结构
 
 ```
 app/       安卓应用模块（基于 Shelter）
 windows/   Windows 多开器模块（Java + Swing，Gradle 构建）
+windows/src/native/   内置互斥体绕过组件（C 源码 + 构建脚本，产物进发布包）
 ```
+
+## 构建内置原生组件（互斥体绕过）
+
+需要便携 GCC（w64devkit，免安装，解压到 `D:\w64devkit` 即可）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows/src/native/build-native.ps1
+```
+
+产物 `injector.exe` + `hook.dll` 会自动进入 Windows 版发布包（`windows/build/dist/`）。
+编译器和所有下载物只放在 D 盘，不写入系统目录。
 
 ## 开源许可
 

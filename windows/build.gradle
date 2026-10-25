@@ -45,11 +45,17 @@ tasks.register('packageWinApp', Exec) {
             from 'scripts'
             into new File(inputDir, 'scripts')
         }
+        // 自研内置组件：互斥体绕过（injector.exe + hook.dll，TCC 编译，纯 D 盘构建）
+        copy {
+            from 'src/native/bin'
+            into inputDir
+            include 'injector.exe', 'hook.dll'
+        }
     }
     commandLine "${javaHome}/bin/jpackage",
             '--type', 'app-image',
             '--name', 'MultiOpener-Windows',
-            '--app-version', '1.0.2',
+            '--app-version', '1.0.3',
             '--input', inputDir.absolutePath,
             '--main-jar', jar.archiveFileName.get(),
             '--main-class', 'multiopener.Main',
@@ -69,6 +75,6 @@ tasks.register('packageZip', Zip) {
     description = '把 Windows 多开器程序目录压缩为 zip'
     dependsOn packageWinApp
     from layout.buildDirectory.dir('dist')
-    archiveFileName = "MultiOpener-Windows-1.0.2.zip"
+    archiveFileName = "MultiOpener-Windows-1.0.3.zip"
     destinationDirectory = layout.buildDirectory.dir('dist')
 }

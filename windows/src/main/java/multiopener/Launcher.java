@@ -32,7 +32,8 @@ public class Launcher {
      *  copy    复制目录 + 改名 exe 启动（绕过按进程名检测单实例：PCL、微信）
      *  profile 数据目录隔离启动（Chromium 系：Chrome/Edge 加 --user-data-dir）
      *  sandbox 沙盒多开（Sandboxie-Plus，绕互斥体级单实例：PCL2 等）
-     *  auto    智能多开：自动尝试 直接启动 → 复制目录+改名 → 沙盒 */
+     *  mutex   互斥体绕过（自研内置组件：挂起启动→注入 hook→改互斥体名）
+     *  auto    智能多开：自动尝试 直接启动 → 复制目录+改名 → 互斥体绕过 */
     public static Process launch(AppEntry app, int index) throws IOException {
         String mode = app.mode;
         Process proc;
@@ -49,6 +50,10 @@ public class Launcher {
                 lastMode = "sandbox";
                 proc = launchSandbox(app, index);
                 break;
+            case "mutex":
+                lastMode = "mutex";
+                proc = launchMutex(app, index);
+                break;
             case "auto":
                 proc = tryChain(app, index);
                 break;
@@ -57,7 +62,9 @@ public class Launcher {
                 proc = launchDirect(app);
         }
         synchronized (INSTANCES) {
-            INSTANCES.add(app.name + "|" + proc.pid());
+            // mutex 模式：真实目标是注入器启动的那个进程
+            long pid = "mutex".equals(mode) ? lastMutexPid : proc.pid();
+            if (pid > 0) INSTANCES.add(app.name + "|" + pid);
         }
         return proc;
     }
@@ -77,9 +84,9 @@ public class Launcher {
             Process p = launchCopy(app, index);
             if (aliveAfter4s(p)) { lastMode = "copy"; return p; }
         } catch (IOException ignored) { }
-        // 3) 沙盒多开（绕互斥体级单实例；需已安装 Sandboxie-Plus）
-        Process p = launchSandbox(app, index);
-        lastMode = "sandbox";
+        // 3) 互斥体绕过（自研注入，绕互斥体级单实例：PCL2 等，无需装任何软件）
+        Process p = launchMutex(app, index);
+        lastMode = "mutex";
         return p;
     }
 
@@ -98,6 +105,54 @@ public class Launcher {
         File exe = new File(app.path);
         if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
         return new ProcessBuilder(app.path).directory(exe.getParentFile()).start();
+    }
+
+    /** 互斥体绕过：注入器挂起启动目标 → 注入 hook.dll（改互斥体名）→ 恢复。
+     *  任何按固定互斥体名检测单实例的软件都能多开，无需安装任何外部软件。 */
+    private static long lastMutexPid = -1;
+
+    private static Process launchMutex(AppEntry app, int index) throws IOException {
+        File exe = new File(app.path);
+        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
+        File injector = findNativeTool("injector.exe");
+        File hook = findNativeTool("hook.dll");
+        if (injector == null || hook == null) {
+            throw new IOException("缺少内置组件 injector.exe / hook.dll（互斥体绕过）——请下载完整发布包");
+        }
+        Process p = new ProcessBuilder(injector.getAbsolutePath(),
+                exe.getAbsolutePath(), hook.getAbsolutePath())
+                .redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8).trim();
+        try {
+            p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("互斥体绕过启动被中断");
+        }
+        if (p.exitValue() != 0) {
+            throw new IOException("互斥体绕过启动失败: " + (out.isEmpty() ? "exit " + p.exitValue() : out));
+        }
+        int nl = out.indexOf('\n');
+        String line = (nl > 0 ? out.substring(0, nl) : out).trim();
+        try {
+            lastMutexPid = Long.parseLong(line);
+        } catch (NumberFormatException e) {
+            throw new IOException("互斥体绕过启动失败（无法识别进程）: " + out);
+        }
+        if (lastMutexPid <= 0) throw new IOException("互斥体绕过启动失败: " + out);
+        return p;
+    }
+
+    /** 在程序目录里找自研内置组件（app-image 时在 app/ 下，源码运行时在工程目录下） */
+    private static File findNativeTool(String name) {
+        File cwd = new File(System.getProperty("user.dir"));
+        File[] cands = {
+                new File(cwd, "app/" + name),
+                new File(cwd, name),
+        };
+        for (File f : cands) if (f.isFile()) return f;
+        return null;
     }
 
     /** 沙盒多开：每个实例独立 Sandboxie box，互斥体互相隔离 */

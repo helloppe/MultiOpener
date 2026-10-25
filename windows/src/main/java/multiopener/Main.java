@@ -26,13 +26,13 @@ import javax.swing.table.DefaultTableModel;
  *   多开 / 一键冻结(挂起) / 一键解冻(恢复) / 定时冻结 / 检查更新 / 深色主题 / 实例改名
  */
 public class Main extends JFrame {
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.0.3";
     private static final String[] COLUMNS = {"软件", "程序路径", "启动方式", "实例数"};
 
     private Config cfg;
     private DefaultTableModel model;
     private JTextArea log;
-    private JComboBox<String> modeBox = new JComboBox<>(new String[]{"直接启动", "复制目录启动"});
+    private JComboBox<String> modeBox = new JComboBox<>(new String[]{"直接启动", "复制目录启动", "数据目录隔离", "互斥体绕过", "沙盒多开", "智能多开"});
     private Timer scheduler;
 
     public static void main(String[] args) {
@@ -148,6 +148,7 @@ public class Main extends JFrame {
             case "copy": return "复制目录+改名";
             case "profile": return "数据目录隔离";
             case "sandbox": return "沙盒多开";
+            case "mutex": return "互斥体绕过";
             case "auto": return "智能多开";
             default: return "直接启动";
         }
@@ -158,6 +159,7 @@ public class Main extends JFrame {
             case "复制目录+改名": return "copy";
             case "数据目录隔离": return "profile";
             case "沙盒多开": return "sandbox";
+            case "互斥体绕过": return "mutex";
             case "智能多开": return "auto";
             default: return "direct";
         }
@@ -513,10 +515,12 @@ public class Main extends JFrame {
                 + "  绕过按进程名检测单实例的软件（微信等）\n"
                 + "· 数据目录隔离：给 Chrome/Edge 加 --user-data-dir，\n"
                 + "  每个实例独立数据目录（Chromium 系软件专用）\n"
+                + "· 互斥体绕过（内置）：挂起启动 → 注入自研组件 → 给互斥体\n"
+                + "  改名，连互斥体级单实例（PCL2 等）都能多开，\n"
+                + "  无需安装任何外部软件\n"
                 + "· 沙盒多开：每个实例放独立 Sandboxie 沙盒，\n"
-                + "  连互斥体级单实例（PCL2 等）都能多开——\n"
-                + "  需要先装免费开源的 Sandboxie-Plus（sandboxie-plus.com）\n"
-                + "· 智能多开：自动逐级尝试 直接启动 → 复制改名 → 沙盒，\n"
+                + "  需要时自选（免费开源，sandboxie-plus.com）\n"
+                + "· 智能多开：自动逐级尝试 直接启动 → 复制改名 → 互斥体绕过，\n"
                 + "  这个不行就自动换下一个，几乎覆盖所有软件\n\n"
                 + "【功能对照（安卓版 → Windows 版）】\n"
                 + "· 一键冻结/解冻 → 挂起/恢复全部多开实例\n"
@@ -526,7 +530,8 @@ public class Main extends JFrame {
                 + "· 深色主题 → 一键切换\n\n"
                 + "【注意】\n"
                 + "· 微信用「复制目录+改名」；Chrome/Edge 用「数据目录隔离」；\n"
-                + "· PCL2 等互斥体级单实例软件用「沙盒多开」（装 Sandboxie-Plus）；\n"
+                + "· PCL2 等互斥体级单实例软件用「互斥体绕过」（内置组件）；\n"
+                + "· 个别安全软件可能拦截注入，出现拦截时把程序目录加入白名单；\n"
                 + "· 复制目录时 .minecraft 等大目录会用链接共享，不整份复制。\n"
                 + "· 「智能多开」会自动试完所有招数，最适合懒得选的情况。\n"
                 + "· 多开账号请遵守软件官方使用条款。\n\n"

@@ -1,5 +1,7 @@
 include ':app'
 
+include ':windows'
+
 include ':setup-wizard-lib'
 project(':setup-wizard-lib').projectDir = new File('./libs/SetupWizardLibrary/library')
 project(':setup-wizard-lib').buildFileName = 'standalone.gradle'

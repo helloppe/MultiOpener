@@ -2,6 +2,17 @@
 
 本项目的版本记录。上游 Shelter 的历史变更见原项目仓库：https://gitea.angry.im/PeterCxy/Shelter
 
+## [v1.2.0] - 2026-10-25
+
+### 新增
+
+- **检查更新**：主界面菜单新增"检查更新"，自动读取 GitHub 最新 Release 并与本地版本对比，发现新版本一键跳转下载
+- **Windows 版多开器（全新）**：同一项目新增 Windows 版本（`windows-multiopener/`），支持在 Windows 上多开任意软件（微信/QQ/Chrome/游戏），提供"直接启动"与"复制目录启动"两种方式，可打包为单文件 exe
+
+### 其他
+
+- 版本号升级：versionCode 120 / versionName 1.2.0（同签名可覆盖升级）
+
 ## [v1.1.0] - 2026-10-25
 
 ### 新增

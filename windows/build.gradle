@@ -1,0 +1,74 @@
+// ============================================================
+// 通用多开器（Windows 版）Gradle 模块
+// 与安卓模块（app）同属一个 Gradle 工程，一条 gradle 命令即可构建
+// ============================================================
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+application {
+    mainClass = 'multiopener.Main'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'multiopener.Main'
+    }
+}
+
+// 打包 Windows 程序目录（app-image，非单文件 exe）
+// 用法：gradle :windows:packageWinApp
+tasks.register('packageWinApp', Exec) {
+    group = 'build'
+    description = '生成 Windows 多开器程序目录（含 exe 与运行库）'
+    dependsOn jar
+
+    def inputDir = layout.buildDirectory.dir('package-input').get().asFile
+    def distDir = layout.buildDirectory.dir('dist').get().asFile
+    def javaHome = System.getenv('JAVA_HOME') ?: 'D:/biancheng/java/jdk21'
+
+    doFirst {
+        delete distDir
+        mkdir inputDir
+        copy {
+            from jar.archiveFile
+            into inputDir
+        }
+        copy {
+            from 'scripts'
+            into new File(inputDir, 'scripts')
+        }
+    }
+    commandLine "${javaHome}/bin/jpackage",
+            '--type', 'app-image',
+            '--name', 'MultiOpener-Windows',
+            '--app-version', '1.0.0',
+            '--input', inputDir.absolutePath,
+            '--main-jar', jar.archiveFileName.get(),
+            '--main-class', 'multiopener.Main',
+            '--dest', distDir.absolutePath
+    doLast {
+        // 把 PowerShell 脚本放到程序目录根（Launcher 按 user.dir/scripts 查找）
+        copy {
+            from 'scripts'
+            into new File(distDir, 'MultiOpener-Windows/scripts')
+        }
+    }
+}
+
+// 把成品打包成 zip（windows/build/dist/MultiOpener-Windows-1.0.0.zip）
+tasks.register('packageZip', Zip) {
+    group = 'build'
+    description = '把 Windows 多开器程序目录压缩为 zip'
+    dependsOn packageWinApp
+    from layout.buildDirectory.dir('dist')
+    archiveFileName = "MultiOpener-Windows-1.0.0.zip"
+    destinationDirectory = layout.buildDirectory.dir('dist')
+}

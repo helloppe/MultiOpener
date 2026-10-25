@@ -136,4 +136,12 @@
     <string name="scheduled_freeze_time_picker">选择每日自动冻结时间</string>
     <string name="scheduled_unfreeze_time_picker">选择每日自动解冻时间</string>
     <string name="scheduled_freeze_format">已开启：每天 %1$s 自动冻结，%2$s 自动解冻</string>
-    <string name="scheduled_freeze_not_set">未设置</string></resources>
+    <string name="scheduled_freeze_not_set">未设置</string>
+
+    <!-- Check update -->
+    <string name="check_update">检查更新</string>
+    <string name="check_update_fail">检查更新失败，请检查网络</string>
+    <string name="check_update_latest">已是最新版本</string>
+    <string name="check_update_title">发现新版本</string>
+    <string name="check_update_found">发现新版本 v%1$s，是否前往下载？</string>
+    <string name="check_update_download">去下载</string></resources>

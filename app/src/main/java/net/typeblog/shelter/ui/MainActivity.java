@@ -386,6 +386,61 @@ public class MainActivity extends AppCompatActivity {
                 .sendBroadcast(new Intent(BROADCAST_CONTEXT_MENU_CLOSED));
     }
 
+    // Query the latest GitHub release and compare with the local version.
+    // Runs the network request on a background thread.
+    private void checkForUpdate() {
+        new Thread(() -> {
+            String latestTag = null;
+            try {
+                java.net.URL url = new java.net.URL("https://api.github.com/repos/helloppe/MultiOpener/releases/latest");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("User-Agent", "MultiOpener");
+                if (conn.getResponseCode() == 200) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+                    latestTag = new org.json.JSONObject(sb.toString()).getString("tag_name");
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                // Network or parse failure; latestTag stays null
+            }
+
+            String tag = latestTag;
+            runOnUiThread(() -> {
+                if (tag == null) {
+                    Toast.makeText(this, R.string.check_update_fail, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String currentVersion = null;
+                try {
+                    currentVersion = getPackageManager()
+                            .getPackageInfo(getPackageName(), 0).versionName;
+                } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                }
+                if (tag.equals("v" + currentVersion)) {
+                    Toast.makeText(this, R.string.check_update_latest, Toast.LENGTH_SHORT).show();
+                } else {
+                    new AlertDialog.Builder(this)
+                            .setTitle(R.string.check_update_title)
+                            .setMessage(getString(R.string.check_update_found, tag))
+                            .setPositiveButton(R.string.check_update_download,
+                                    (dialog, which) -> startActivity(new Intent(Intent.ACTION_VIEW,
+                                            Uri.parse("https://github.com/helloppe/MultiOpener/releases/latest"))))
+                            .setNegativeButton(R.string.first_run_alert_cancel, null)
+                            .show();
+                }
+            });
+        }).start();
+    }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int itemId = item.getItemId();
@@ -434,6 +489,9 @@ public class MainActivity extends AppCompatActivity {
             Utility.createLauncherShortcut(this, launchIntent,
                     Icon.createWithResource(this, R.mipmap.ic_freeze),
                     "shelter-freeze-all", getString(R.string.freeze_all_shortcut));
+            return true;
+        } else if (itemId == R.id.main_menu_check_update) {
+            checkForUpdate();
             return true;
         } else if (itemId == R.id.main_menu_install_app_to_profile) {
             mSelectApk.launch(null);

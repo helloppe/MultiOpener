@@ -37,6 +37,10 @@
         android:title="@string/create_freeze_all_shortcut" />
 
     <item
+        android:id="@+id/main_menu_check_update"
+        android:title="@string/check_update" />
+
+    <item
         android:id="@+id/main_menu_install_app_to_profile"
         android:title="@string/install_app_to_profile" />
 

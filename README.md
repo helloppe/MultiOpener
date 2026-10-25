@@ -38,6 +38,25 @@ gradle assembleRelease
 
 > Windows 命令行一键构建可参考仓库内 `build.bat`。
 
+## Windows 支持
+
+本项目开发与构建环境即为 **Windows 10/11**，完全支持在 Windows 上开发、构建和测试。
+
+**命令行构建（无需 Android Studio）**
+
+```bat
+:: 双击运行仓库内的 build.bat
+build.bat
+```
+
+`build.bat` 会自动使用本机 JDK 21 + Gradle 8.7 + Android SDK 构建，产物为 `app\build\outputs\apk\release\app-release.apk`。
+
+**在 Windows 上用模拟器测试 APK（不用手机也能试）**
+
+1. 安装任意安卓模拟器（推荐 MuMu 模拟器 12 / 夜神 / 蓝叠，官网免费下载）。
+2. 把构建好的 APK 文件拖进模拟器窗口，或点模拟器里的"安装 APK"按钮选择文件。
+3. 在模拟器里打开"通用多开器"，按引导完成工作资料初始化即可体验全部功能（模拟器版本建议 Android 9 及以上）。
+
 ## 开源许可
 
 **GNU GPL v3.0**，见 [LICENSE](LICENSE)

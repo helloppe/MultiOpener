@@ -23,40 +23,120 @@ public class Launcher {
         return s;
     }
 
-    /** 启动一个实例，返回进程对象（失败抛异常） */
+    /** 启动一个实例，返回进程对象（失败抛异常）。
+     *  多开方法（按 AppEntry.mode）：
+     *  direct  直接启动（无单实例限制的软件）
+     *  copy    复制目录 + 改名 exe 启动（绕过按进程名检测单实例：PCL、微信）
+     *  profile 数据目录隔离启动（Chromium 系：Chrome/Edge 加 --user-data-dir）
+     *  auto    智能多开：先直接启动；发现同名实例已在运行 → 自动改用复制目录+改名 */
     public static Process launch(AppEntry app, int index) throws IOException {
-        boolean copy = "copy".equals(app.mode);
-        File exe = new File(app.path);
-        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
-
+        String mode = app.mode;
         Process proc;
-        if (!copy) {
-            proc = new ProcessBuilder(app.path).directory(exe.getParentFile()).start();
-        } else {
-            // 复制目录启动：先把安装目录复制到独立文件夹，再启动副本
-            String safe = app.name.replaceAll("[\\\\/:*?\"<>|]", "_");
-            File cloneRoot = new File(Config.configFile().getParentFile(), "clones");
-            File dstDir = new File(cloneRoot, safe + "-" + index);
-            File dstExe = new File(dstDir, exe.getName());
-            if (!dstExe.isFile()) {
-                if (!dstDir.mkdirs() && !dstDir.isDirectory()) throw new IOException("无法创建目录: " + dstDir);
-                Process rob = new ProcessBuilder("robocopy", exe.getParentFile().getAbsolutePath(),
-                        dstDir.getAbsolutePath(), "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
-                        .redirectErrorStream(true).start();
-                rob.onExit().thenRun(() -> { });
-                try {
-                    rob.waitFor();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+        switch (mode) {
+            case "copy":
+                proc = launchCopy(app, index);
+                break;
+            case "profile":
+                proc = launchProfile(app, index);
+                break;
+            case "auto": {
+                if (isProcessRunning(new File(app.path).getName())) {
+                    proc = launchCopy(app, index);
+                } else {
+                    proc = launchDirect(app);
                 }
-                if (rob.exitValue() > 7) throw new IOException("复制目录失败 (robocopy exit " + rob.exitValue() + ")");
+                break;
             }
-            proc = new ProcessBuilder(dstExe.getAbsolutePath()).directory(dstDir).start();
+            default:
+                proc = launchDirect(app);
         }
         synchronized (INSTANCES) {
             INSTANCES.add(app.name + "|" + proc.pid());
         }
         return proc;
+    }
+
+    /** 直接启动 */
+    private static Process launchDirect(AppEntry app) throws IOException {
+        File exe = new File(app.path);
+        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
+        return new ProcessBuilder(app.path).directory(exe.getParentFile()).start();
+    }
+
+    /** 数据目录隔离启动：给 Chromium 系软件加 --user-data-dir，每次实例独立数据目录 */
+    private static Process launchProfile(AppEntry app, int index) throws IOException {
+        File exe = new File(app.path);
+        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
+        String safe = app.name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        File cloneRoot = new File(Config.configFile().getParentFile(), "clones");
+        File dataDir = new File(cloneRoot, safe + "-" + index + "-profile");
+        if (!dataDir.isDirectory() && !dataDir.mkdirs()) throw new IOException("无法创建数据目录: " + dataDir);
+        return new ProcessBuilder(app.path,
+                "--user-data-dir=" + dataDir.getAbsolutePath(), "--no-first-run")
+                .directory(exe.getParentFile()).start();
+    }
+
+    /** 复制目录 + 改名 exe 启动 */
+    private static Process launchCopy(AppEntry app, int index) throws IOException {
+        File exe = new File(app.path);
+        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
+        // 复制目录启动：复制安装目录，并把 exe 改名为 "原名_多开N.exe" 再启动，
+        // 绕过按进程名/窗口名检测单实例的软件（PCL、微信 4.x 等）
+        String safe = app.name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        File cloneRoot = new File(Config.configFile().getParentFile(), "clones");
+        File dstDir = new File(cloneRoot, safe + "-" + index);
+        File dstExe = new File(dstDir, exe.getName());
+        if (!dstExe.isFile()) {
+            if (!dstDir.mkdirs() && !dstDir.isDirectory()) throw new IOException("无法创建目录: " + dstDir);
+            // 复制安装目录；排除大型数据目录（如 .minecraft），用目录链接共享而不是整份复制
+            Process rob = new ProcessBuilder("robocopy", exe.getParentFile().getAbsolutePath(),
+                    dstDir.getAbsolutePath(), "/E", "/XD", ".minecraft", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
+                    .redirectErrorStream(true).start();
+            try {
+                rob.waitFor();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (rob.exitValue() > 7) throw new IOException("复制目录失败 (robocopy exit " + rob.exitValue() + ")");
+            // 把源目录里的大型数据目录用 junction 链接到副本（零复制、共享数据）
+            File srcMc = new File(exe.getParentFile(), ".minecraft");
+            File dstMc = new File(dstDir, ".minecraft");
+            if (srcMc.isDirectory() && !dstMc.exists()) {
+                try {
+                    new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                            dstMc.getAbsolutePath(), srcMc.getAbsolutePath())
+                            .redirectErrorStream(true).start().waitFor();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        // 改名副本：Weixin.exe -> Weixin_多开1.exe（进程名不同 → 绕过单实例检测）
+        String name = exe.getName();
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String ext = dot > 0 ? name.substring(dot) : "";
+        File renamedExe = new File(dstDir, stem + "_多开" + index + ext);
+        if (!renamedExe.isFile()) {
+            java.nio.file.Files.copy(dstExe.toPath(), renamedExe.toPath());
+        }
+        return new ProcessBuilder(renamedExe.getAbsolutePath()).directory(dstDir).start();
+    }
+
+    /** 判断某个 exe 名（如 Weixin.exe）对应的进程是否已在运行 */
+    private static boolean isProcessRunning(String exeName) {
+        try {
+            Process p = new ProcessBuilder("tasklist.exe", "/FI",
+                    "IMAGENAME eq " + exeName, "/FO", "CSV", "/NH")
+                    .redirectErrorStream(true).start();
+            byte[] buf = p.getInputStream().readAllBytes();
+            String out = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
+            p.waitFor();
+            // 输出含 "xxx.exe" 且不是仅标题行 → 有同名进程
+            return out.toLowerCase().contains(exeName.toLowerCase());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 挂起 / 恢复指定 pid（PowerShell + NtSuspendProcess/NtResumeProcess） */

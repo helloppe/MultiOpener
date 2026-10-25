@@ -139,8 +139,25 @@ public class Main extends JFrame {
     private void refreshTable() {
         model.setRowCount(0);
         for (AppEntry a : cfg.apps) {
-            model.addRow(new Object[]{a.name, a.path,
-                    "copy".equals(a.mode) ? "复制目录启动" : "直接启动", a.count});
+            model.addRow(new Object[]{a.name, a.path, modeLabel(a.mode), a.count});
+        }
+    }
+
+    private String modeLabel(String mode) {
+        switch (mode) {
+            case "copy": return "复制目录+改名";
+            case "profile": return "数据目录隔离";
+            case "auto": return "智能多开";
+            default: return "直接启动";
+        }
+    }
+
+    private String modeOf(String label) {
+        switch (label) {
+            case "复制目录+改名": return "copy";
+            case "数据目录隔离": return "profile";
+            case "智能多开": return "auto";
+            default: return "direct";
         }
     }
 
@@ -153,7 +170,7 @@ public class Main extends JFrame {
             Object c = model.getValueAt(i, 3);
             if (n != null) a.name = n.toString();
             if (p != null) a.path = p.toString();
-            if (m != null) a.mode = "复制目录启动".equals(m.toString()) ? "copy" : "direct";
+            if (m != null) a.mode = modeOf(m.toString());
             if (c != null) {
                 try { a.count = Math.max(1, Integer.parseInt(c.toString())); }
                 catch (Exception ignored) { }
@@ -224,11 +241,20 @@ public class Main extends JFrame {
                     logLine("✗ " + a.name + "：找不到程序 " + a.path);
                     continue;
                 }
-                logLine("▶ " + a.name + "：" + a.mode + " × " + a.count);
+                logLine("▶ " + a.name + "：" + modeLabel(a.mode) + " × " + a.count);
                 for (int k = 1; k <= a.count; k++) {
                     try {
-                        Launcher.launch(a, k);
-                        logLine("  ✓ 第 " + k + " 个实例已启动（" + (k == 1 ? "主实例" : "副实例") + "）");
+                        Process proc = Launcher.launch(a, k);
+                        logLine("  ✓ 第 " + k + " 个实例已启动（" + modeLabel(a.mode) + "）");
+                        // copy/改名 方式下检查副本是否被单实例检测拦截而立即退出
+                        if ("copy".equals(a.mode)) {
+                            sleep(3000);
+                            if (!proc.isAlive()) {
+                                logLine("  ⚠ 第 " + k + " 个实例退出了——该软件可能是「互斥体级」单实例（如 PCL2），改名无效；");
+                                logLine("    可换「数据目录隔离」再试；或配合 Sandboxie-Plus（免费开源）沙盒；");
+                                logLine("    PCL 用户还可以再装一个 HMCL 与 PCL2 搭配双开。");
+                            }
+                        }
                     } catch (Exception e) {
                         logLine("  ✗ 第 " + k + " 个实例启动失败：" + e.getMessage());
                     }
@@ -428,30 +454,45 @@ public class Main extends JFrame {
     private void detectCommonApps() {
         String localAppData = System.getenv("LOCALAPPDATA");
         String windir = System.getenv("WINDIR");
-        String[] dirs = localAppData == null ? new String[0] : new String[]{localAppData};
-        List<File> candidates = new ArrayList<>();
-        candidates.add(new File("D:/Weixin/Weixin.exe"));
-        candidates.add(new File("D:/QQ/QQ.exe"));
-        candidates.add(new File("C:/Program Files/Google/Chrome/Application/chrome.exe"));
-        candidates.add(new File("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"));
-        candidates.add(new File("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"));
-        candidates.add(new File("C:/Program Files/Microsoft/Edge/Application/msedge.exe"));
-        candidates.add(new File(windir + "/notepad.exe"));
+        // 每个候选: 路径 + 名称 + 默认多开方式
+        // copy=复制目录+改名（绕进程名检测，适合 PCL/微信）
+        // profile=数据目录隔离（适合 Chrome/Edge 等 Chromium 软件）
+        // direct=直接启动（无单实例限制的软件）
+        String[][] candidates = {
+                {"D:/Weixin/Weixin.exe", "微信", "copy"},
+                {"D:/QQ/QQ.exe", "QQ", "direct"},
+                {"C:/Program Files/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
+                {"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
+                {"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "Edge", "profile"},
+                {"C:/Program Files/Microsoft/Edge/Application/msedge.exe", "Edge", "profile"},
+                {windir + "/notepad.exe", "记事本", "direct"},
+                {"D:/Plain Craft Launcher 2/Plain Craft Launcher.exe", "PCL", "copy"},
+                {"D:/PCL/Plain Craft Launcher.exe", "PCL", "copy"},
+                {"D:/PCL2/Plain Craft Launcher.exe", "PCL", "copy"},
+                {"C:/Program Files (x86)/Plain Craft Launcher 2/Plain Craft Launcher.exe", "PCL", "copy"},
+        };
+        java.util.Set<String> added = new java.util.HashSet<>();
         if (localAppData != null) {
-            candidates.add(new File(localAppData + "/Google/Chrome/Application/chrome.exe"));
-            candidates.add(new File(localAppData + "/Programs/WeChat/WeChat.exe"));
+            for (String[] cand : new String[][]{
+                    {localAppData + "/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
+                    {localAppData + "/Programs/WeChat/WeChat.exe", "微信", "copy"}}) {
+                File f = new File(cand[0]);
+                if (f.isFile()) {
+                    boolean exists = cfg.apps.stream().anyMatch(a -> a.path.equalsIgnoreCase(f.getAbsolutePath()));
+                    if (!exists) {
+                        cfg.apps.add(new AppEntry(cand[1], f.getAbsolutePath(), cand[2], 2));
+                        added.add(f.getAbsolutePath().toLowerCase());
+                    }
+                }
+            }
         }
-        String[] names = {"微信", "QQ", "Chrome", "Chrome", "Edge", "Edge", "记事本", "Chrome", "微信"};
-        boolean[] seen = new boolean[names.length];
-        for (int i = 0; i < candidates.size(); i++) {
-            File f = candidates.get(i);
-            if (seen[i] || !f.isFile()) continue;
-            seen[i] = true;
-            boolean exists = cfg.apps.stream()
-                    .anyMatch(a -> a.path.equalsIgnoreCase(f.getAbsolutePath()));
+        for (String[] cand : candidates) {
+            File f = new File(cand[0]);
+            if (!f.isFile()) continue;
+            if (added.contains(f.getAbsolutePath().toLowerCase())) continue;
+            boolean exists = cfg.apps.stream().anyMatch(a -> a.path.equalsIgnoreCase(f.getAbsolutePath()));
             if (!exists) {
-                cfg.apps.add(new AppEntry(names[i], f.getAbsolutePath(),
-                        "微信".equals(names[i]) ? "copy" : "direct", 2));
+                cfg.apps.add(new AppEntry(cand[1], f.getAbsolutePath(), cand[2], 2));
             }
         }
     }
@@ -460,10 +501,18 @@ public class Main extends JFrame {
         JOptionPane.showMessageDialog(this,
                 "通用多开器（Windows 版）v" + VERSION + "\n\n"
                 + "【怎么用】\n"
-                + "1. 列表自动检测微信、QQ、Chrome、Edge、记事本；\n"
+                + "1. 列表自动检测微信、QQ、Chrome、Edge、记事本、PCL；\n"
                 + "   没有的用「添加软件」自己选（任意 .exe）。\n"
-                + "2. 双击单元格可改软件名、启动方式、实例数。\n"
+                + "2. 双击单元格可改软件名、多开方式、实例数。\n"
                 + "3. 点「多开所选」或「全部多开」启动多实例。\n\n"
+                + "【多开方式（一种不行就换另一种）】\n"
+                + "· 直接启动：普通启动，适合无单实例限制的软件\n"
+                + "· 复制目录+改名：复制安装目录并把 exe 改名后启动，\n"
+                + "  绕过按进程名检测单实例的软件（PCL、微信）\n"
+                + "· 数据目录隔离：给 Chrome/Edge 加 --user-data-dir，\n"
+                + "  每个实例独立数据目录（Chromium 系软件专用）\n"
+                + "· 智能多开：先直接启动；检测到同名进程已在运行，\n"
+                + "  自动改用「复制目录+改名」重试\n\n"
                 + "【功能对照（安卓版 → Windows 版）】\n"
                 + "· 一键冻结/解冻 → 挂起/恢复全部多开实例\n"
                 + "· 定时冻结 → 每日到点自动挂起/恢复\n"
@@ -471,8 +520,12 @@ public class Main extends JFrame {
                 + "· 检查更新 → 读取 GitHub Release 对比版本\n"
                 + "· 深色主题 → 一键切换\n\n"
                 + "【注意】\n"
-                + "· 微信等限制单实例的软件请用「复制目录启动」；\n"
-                + "  个别新版仍受限时建议配合沙箱（Sandboxie）使用。\n"
+                + "· PCL、微信请用「复制目录+改名」；Chrome/Edge 用「数据目录隔离」。\n"
+                + "· 复制目录时 .minecraft 等大目录会用链接共享，不整份复制。\n"
+                + "· 实测：PCL2 用「互斥体」检测单实例，改名/换目录都拦不住，\n"
+                + "  只能配合沙盒（Sandboxie-Plus，免费开源）或再装一个 HMCL 搭配双开。\n"
+                + "· 别的软件如果「复制目录+改名」启动后 3 秒内退出，日志会提示，\n"
+                + "  按提示换「数据目录隔离」或沙盒即可。\n"
                 + "· 多开账号请遵守软件官方使用条款。\n\n"
                 + "完全开源（GPL-3.0）：https://github.com/helloppe/MultiOpener",
                 "帮助", JOptionPane.INFORMATION_MESSAGE);

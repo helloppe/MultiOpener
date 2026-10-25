@@ -49,7 +49,7 @@ tasks.register('packageWinApp', Exec) {
     commandLine "${javaHome}/bin/jpackage",
             '--type', 'app-image',
             '--name', 'MultiOpener-Windows',
-            '--app-version', '1.0.0',
+            '--app-version', '1.0.1',
             '--input', inputDir.absolutePath,
             '--main-jar', jar.archiveFileName.get(),
             '--main-class', 'multiopener.Main',
@@ -69,6 +69,6 @@ tasks.register('packageZip', Zip) {
     description = '把 Windows 多开器程序目录压缩为 zip'
     dependsOn packageWinApp
     from layout.buildDirectory.dir('dist')
-    archiveFileName = "MultiOpener-Windows-1.0.0.zip"
+    archiveFileName = "MultiOpener-Windows-1.0.1.zip"
     destinationDirectory = layout.buildDirectory.dir('dist')
 }

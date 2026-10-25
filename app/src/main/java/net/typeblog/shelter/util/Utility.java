@@ -21,6 +21,9 @@ import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
@@ -299,6 +302,30 @@ public class Utility {
                 Arrays.asList(LocalStorageManager.getInstance().getStringList(pref)));
         list.removeIf((it) -> apps.stream().noneMatch((x) -> x.getPackageName().equals(it)));
         LocalStorageManager.getInstance().setStringList(pref, list.toArray(new String[]{}));
+    }
+
+    // 为图标右下角叠加一个"多开"蓝色角标（数字 2），用于一眼区分多开空间的应用
+    public static Bitmap addMultiOpenerBadge(Bitmap src) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        Bitmap result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(result);
+        canvas.drawBitmap(src, 0, 0, null);
+        float radius = w * 0.24f;
+        float cx = w - radius * 0.85f;
+        float cy = h - radius * 0.85f;
+        Paint circlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        circlePaint.setColor(Color.parseColor("#1E88E5"));
+        circlePaint.setShadowLayer(radius * 0.2f, 0, radius * 0.12f, Color.argb(120, 0, 0, 0));
+        canvas.drawCircle(cx, cy, radius, circlePaint);
+        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        textPaint.setColor(Color.WHITE);
+        textPaint.setTextSize(radius * 1.35f);
+        textPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        float textY = cy - (textPaint.ascent() + textPaint.descent()) / 2f;
+        canvas.drawText("2", cx, textY, textPaint);
+        return result;
     }
 
     public static void createLauncherShortcut(Context context, Intent launchIntent, Icon icon, String id, String label) {

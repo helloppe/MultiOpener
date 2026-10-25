@@ -477,6 +477,10 @@ public class AppListFragment extends BaseFragment {
             String message = getString(isInstall ? R.string.clone_success : R.string.uninstall_success);
             message = String.format(message, app.getLabel());
             Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+            // 克隆成功后自动在桌面创建带角标的快捷图标，方便一眼区分两个空间
+            if (isInstall) {
+                loadIconAndAddUnfreezeShortcut(app, null);
+            }
             LocalBroadcastManager.getInstance(getContext())
                     .sendBroadcast(new Intent(BROADCAST_REFRESH));
         } else if (result == ShelterService.RESULT_CANNOT_INSTALL_SYSTEM_APP) {
@@ -519,8 +523,9 @@ public class AppListFragment extends BaseFragment {
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
         // Then tell the launcher to add the shortcut
+        // The icon gets a "multi-opener" badge so the clone is easy to tell apart
         Utility.createLauncherShortcut(getContext(), launchIntent,
-                Icon.createWithBitmap(icon), id,
+                Icon.createWithBitmap(Utility.addMultiOpenerBadge(icon)), id,
                 app.getLabel());
     }
 }

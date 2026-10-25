@@ -147,6 +147,7 @@ public class Main extends JFrame {
         switch (mode) {
             case "copy": return "复制目录+改名";
             case "profile": return "数据目录隔离";
+            case "sandbox": return "沙盒多开";
             case "auto": return "智能多开";
             default: return "直接启动";
         }
@@ -156,6 +157,7 @@ public class Main extends JFrame {
         switch (label) {
             case "复制目录+改名": return "copy";
             case "数据目录隔离": return "profile";
+            case "沙盒多开": return "sandbox";
             case "智能多开": return "auto";
             default: return "direct";
         }
@@ -245,14 +247,14 @@ public class Main extends JFrame {
                 for (int k = 1; k <= a.count; k++) {
                     try {
                         Process proc = Launcher.launch(a, k);
-                        logLine("  ✓ 第 " + k + " 个实例已启动（" + modeLabel(a.mode) + "）");
-                        // copy/改名 方式下检查副本是否被单实例检测拦截而立即退出
+                        String used = Launcher.lastMode;
+                        logLine("  ✓ 第 " + k + " 个实例已启动（" + modeLabel(used) + "）");
+                        // 手动选「复制目录+改名」时：副本 3 秒内退出 → 提示该软件是互斥体级
                         if ("copy".equals(a.mode)) {
                             sleep(3000);
                             if (!proc.isAlive()) {
-                                logLine("  ⚠ 第 " + k + " 个实例退出了——该软件可能是「互斥体级」单实例（如 PCL2），改名无效；");
-                                logLine("    可换「数据目录隔离」再试；或配合 Sandboxie-Plus（免费开源）沙盒；");
-                                logLine("    PCL 用户还可以再装一个 HMCL 与 PCL2 搭配双开。");
+                                logLine("  ⚠ 第 " + k + " 个实例退出了——该软件可能是「互斥体级」单实例（如 PCL2），");
+                                logLine("    请把启动方式改成「沙盒多开」（需安装 Sandboxie-Plus）或「智能多开」。");
                             }
                         }
                     } catch (Exception e) {
@@ -508,11 +510,14 @@ public class Main extends JFrame {
                 + "【多开方式（一种不行就换另一种）】\n"
                 + "· 直接启动：普通启动，适合无单实例限制的软件\n"
                 + "· 复制目录+改名：复制安装目录并把 exe 改名后启动，\n"
-                + "  绕过按进程名检测单实例的软件（PCL、微信）\n"
+                + "  绕过按进程名检测单实例的软件（微信等）\n"
                 + "· 数据目录隔离：给 Chrome/Edge 加 --user-data-dir，\n"
                 + "  每个实例独立数据目录（Chromium 系软件专用）\n"
-                + "· 智能多开：先直接启动；检测到同名进程已在运行，\n"
-                + "  自动改用「复制目录+改名」重试\n\n"
+                + "· 沙盒多开：每个实例放独立 Sandboxie 沙盒，\n"
+                + "  连互斥体级单实例（PCL2 等）都能多开——\n"
+                + "  需要先装免费开源的 Sandboxie-Plus（sandboxie-plus.com）\n"
+                + "· 智能多开：自动逐级尝试 直接启动 → 复制改名 → 沙盒，\n"
+                + "  这个不行就自动换下一个，几乎覆盖所有软件\n\n"
                 + "【功能对照（安卓版 → Windows 版）】\n"
                 + "· 一键冻结/解冻 → 挂起/恢复全部多开实例\n"
                 + "· 定时冻结 → 每日到点自动挂起/恢复\n"
@@ -520,12 +525,10 @@ public class Main extends JFrame {
                 + "· 检查更新 → 读取 GitHub Release 对比版本\n"
                 + "· 深色主题 → 一键切换\n\n"
                 + "【注意】\n"
-                + "· PCL、微信请用「复制目录+改名」；Chrome/Edge 用「数据目录隔离」。\n"
+                + "· 微信用「复制目录+改名」；Chrome/Edge 用「数据目录隔离」；\n"
+                + "· PCL2 等互斥体级单实例软件用「沙盒多开」（装 Sandboxie-Plus）；\n"
                 + "· 复制目录时 .minecraft 等大目录会用链接共享，不整份复制。\n"
-                + "· 实测：PCL2 用「互斥体」检测单实例，改名/换目录都拦不住，\n"
-                + "  只能配合沙盒（Sandboxie-Plus，免费开源）或再装一个 HMCL 搭配双开。\n"
-                + "· 别的软件如果「复制目录+改名」启动后 3 秒内退出，日志会提示，\n"
-                + "  按提示换「数据目录隔离」或沙盒即可。\n"
+                + "· 「智能多开」会自动试完所有招数，最适合懒得选的情况。\n"
                 + "· 多开账号请遵守软件官方使用条款。\n\n"
                 + "完全开源（GPL-3.0）：https://github.com/helloppe/MultiOpener",
                 "帮助", JOptionPane.INFORMATION_MESSAGE);

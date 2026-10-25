@@ -23,31 +23,37 @@ public class Launcher {
         return s;
     }
 
+    /** 当前实例实际用到的多开方式（供界面日志显示） */
+    public static volatile String lastMode = "direct";
+
     /** 启动一个实例，返回进程对象（失败抛异常）。
      *  多开方法（按 AppEntry.mode）：
      *  direct  直接启动（无单实例限制的软件）
      *  copy    复制目录 + 改名 exe 启动（绕过按进程名检测单实例：PCL、微信）
      *  profile 数据目录隔离启动（Chromium 系：Chrome/Edge 加 --user-data-dir）
-     *  auto    智能多开：先直接启动；发现同名实例已在运行 → 自动改用复制目录+改名 */
+     *  sandbox 沙盒多开（Sandboxie-Plus，绕互斥体级单实例：PCL2 等）
+     *  auto    智能多开：自动尝试 直接启动 → 复制目录+改名 → 沙盒 */
     public static Process launch(AppEntry app, int index) throws IOException {
         String mode = app.mode;
         Process proc;
         switch (mode) {
             case "copy":
+                lastMode = "copy";
                 proc = launchCopy(app, index);
                 break;
             case "profile":
+                lastMode = "profile";
                 proc = launchProfile(app, index);
                 break;
-            case "auto": {
-                if (isProcessRunning(new File(app.path).getName())) {
-                    proc = launchCopy(app, index);
-                } else {
-                    proc = launchDirect(app);
-                }
+            case "sandbox":
+                lastMode = "sandbox";
+                proc = launchSandbox(app, index);
                 break;
-            }
+            case "auto":
+                proc = tryChain(app, index);
+                break;
             default:
+                lastMode = "direct";
                 proc = launchDirect(app);
         }
         synchronized (INSTANCES) {
@@ -56,11 +62,100 @@ public class Launcher {
         return proc;
     }
 
+    /** 智能多开：直接启动 → 复制目录+改名 → 沙盒，逐级尝试 */
+    private static Process tryChain(AppEntry app, int index) throws IOException {
+        String exeName = new File(app.path).getName();
+        // 1) 无同名进程时直接启动；若 4 秒内退出（被单实例检测拦）则换下一招
+        if (!isProcessRunning(exeName)) {
+            try {
+                Process p = launchDirect(app);
+                if (aliveAfter4s(p)) { lastMode = "direct"; return p; }
+            } catch (IOException ignored) { }
+        }
+        // 2) 复制目录 + 改名 exe（绕进程名检测）
+        try {
+            Process p = launchCopy(app, index);
+            if (aliveAfter4s(p)) { lastMode = "copy"; return p; }
+        } catch (IOException ignored) { }
+        // 3) 沙盒多开（绕互斥体级单实例；需已安装 Sandboxie-Plus）
+        Process p = launchSandbox(app, index);
+        lastMode = "sandbox";
+        return p;
+    }
+
+    /** 等 4 秒：返回 true 表示进程还活着（启动成功）；false 表示已退出（被拦截） */
+    private static boolean aliveAfter4s(Process p) {
+        try {
+            return !p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return p.isAlive();
+        }
+    }
+
     /** 直接启动 */
     private static Process launchDirect(AppEntry app) throws IOException {
         File exe = new File(app.path);
         if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
         return new ProcessBuilder(app.path).directory(exe.getParentFile()).start();
+    }
+
+    /** 沙盒多开：每个实例独立 Sandboxie box，互斥体互相隔离 */
+    private static Process launchSandbox(AppEntry app, int index) throws IOException {
+        File exe = new File(app.path);
+        if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
+        File startExe = findSandboxieStart();
+        if (startExe == null) {
+            throw new IOException("未安装 Sandboxie-Plus（免费开源沙盒，https://sandboxie-plus.com）——"
+                    + "互斥体级单实例软件需要它才能多开");
+        }
+        String safe = app.name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        String box = "MultiOpener_" + safe + "_" + index;
+        ensureSandboxieBox(box);
+        return new ProcessBuilder(startExe.getAbsolutePath(), "/box:" + box, exe.getAbsolutePath())
+                .directory(exe.getParentFile()).start();
+    }
+
+    /** 查找 Sandboxie-Plus 的 Start.exe */
+    private static File findSandboxieStart() {
+        String sbieHome = System.getenv("SBIEHOME");
+        if (sbieHome != null) {
+            File f = new File(sbieHome, "Start.exe");
+            if (f.isFile()) return f;
+        }
+        File[] paths = {
+                new File("C:/Program Files/Sandboxie-Plus/Start.exe"),
+                new File("C:/Program Files (x86)/Sandboxie-Plus/Start.exe"),
+                new File("C:/Program Files/Sandboxie/Start.exe"),
+                new File("C:/Program Files (x86)/Sandboxie/Start.exe"),
+        };
+        for (File f : paths) if (f.isFile()) return f;
+        return null;
+    }
+
+    /** 确保 Sandboxie box 存在（往 Sandboxie.ini 追加 [box] 段） */
+    private static void ensureSandboxieBox(String box) {
+        String sbieHome = System.getenv("SBIEHOME");
+        String programData = System.getenv("ProgramData");
+        File[] inis = {
+                programData == null ? null : new File(programData, "SandboxiePlus/Sandboxie.ini"),
+                sbieHome == null ? null : new File(sbieHome, "Sandboxie.ini"),
+                new File(System.getProperty("user.home"), "AppData/Roaming/SandboxiePlus/Sandboxie.ini"),
+        };
+        for (File ini : inis) {
+            if (ini == null || !ini.isFile()) continue;
+            try {
+                java.nio.file.Path p = ini.toPath();
+                byte[] data = java.nio.file.Files.readAllBytes(p);
+                String content = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+                if (!content.contains("[" + box + "]")) {
+                    java.nio.file.Files.write(p, ("\n[" + box + "]\nEnabled=y\n")
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            java.nio.file.StandardOpenOption.APPEND);
+                }
+                return; // 只要改到第一份存在的 ini 就够
+            } catch (IOException ignored) { }
+        }
     }
 
     /** 数据目录隔离启动：给 Chromium 系软件加 --user-data-dir，每次实例独立数据目录 */

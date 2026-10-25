@@ -119,4 +119,21 @@
     <string name="format_minutes">%d min</string>
     <string name="first_run_alert">You are using 通用多开器.\n\nThis app relies on the Android <b>Work Profile</b> feature to isolate apps. If your vendor / custom ROM breaks this feature, you should <b>quit</b> immediately and <b>stop using</b> this app.\n\nIf you choose to continue, 通用多开器 will initialize the Work Profile for you.</string>
     <string name="device_admin_toast">通用多开器 must have Device Admin privileges to work correctly, please try again</string>
-    <string name="provision_still_pending">Setting up 通用多开器, please wait…</string></resources>
+    <string name="provision_still_pending">Setting up 通用多开器, please wait…</string>
+
+    <!-- MultiOpener extra features -->
+    <string name="clone_shortcut_label">%1$s（小号）</string>
+    <string name="main_menu_freeze_all_apps">一键冻结全部</string>
+    <string name="main_menu_unfreeze_all_apps">一键解冻全部</string>
+    <string name="freeze_all_apps_confirm">确定要冻结多开空间里的全部应用吗？冻结后应用图标会从桌面消失，点击图标可重新解冻并启动。</string>
+    <string name="unfreeze_all_apps_confirm">确定要解冻多开空间里的全部应用吗？</string>
+    <string name="freeze_all_apps_success">已冻结全部多开应用</string>
+    <string name="unfreeze_all_apps_success">已解冻全部多开应用</string>
+    <string name="scheduled_freeze">定时冻结</string>
+    <string name="scheduled_freeze_summary">到点自动冻结 / 解冻多开空间里的全部应用</string>
+    <string name="scheduled_freeze_time">每日冻结时间</string>
+    <string name="scheduled_unfreeze_time">每日解冻时间</string>
+    <string name="scheduled_freeze_time_picker">选择每日自动冻结时间</string>
+    <string name="scheduled_unfreeze_time_picker">选择每日自动解冻时间</string>
+    <string name="scheduled_freeze_format">已开启：每天 %1$s 自动冻结，%2$s 自动解冻</string>
+    <string name="scheduled_freeze_not_set">未设置</string></resources>

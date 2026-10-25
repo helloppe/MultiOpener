@@ -21,6 +21,7 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- For querying apps on Android R and later -->
     <queries>
@@ -111,6 +112,17 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
                 <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
                 <action android:name="android.app.action.PROVISION_MANAGED_PROFILE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receives the daily scheduled freeze / unfreeze alarms and re-schedules after reboot -->
+        <receiver
+            android:name=".receivers.ScheduledFreezeReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="net.typeblog.shelter.action.SCHEDULED_FREEZE" />
+                <action android:name="net.typeblog.shelter.action.SCHEDULED_UNFREEZE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 

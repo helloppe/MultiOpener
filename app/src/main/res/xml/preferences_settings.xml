@@ -44,6 +44,26 @@
     </androidx.preference.PreferenceCategory>
 
     <androidx.preference.PreferenceCategory
+        android:title="@string/scheduled_freeze">
+
+        <androidx.preference.CheckBoxPreference
+            android:key="settings_scheduled_freeze_enabled"
+            android:title="@string/scheduled_freeze"
+            android:summary="@string/scheduled_freeze_summary" />
+
+        <androidx.preference.Preference
+            android:dependency="settings_scheduled_freeze_enabled"
+            android:key="settings_scheduled_freeze_time"
+            android:title="@string/scheduled_freeze_time" />
+
+        <androidx.preference.Preference
+            android:dependency="settings_scheduled_freeze_enabled"
+            android:key="settings_scheduled_unfreeze_time"
+            android:title="@string/scheduled_unfreeze_time" />
+
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
         android:title="@string/settings_about">
 
         <androidx.preference.Preference

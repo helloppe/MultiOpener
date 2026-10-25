@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 
+import net.typeblog.shelter.receivers.ScheduledFreezeReceiver;
 import net.typeblog.shelter.services.PaymentStubService;
 import net.typeblog.shelter.ui.DummyActivity;
 
@@ -136,5 +137,86 @@ public class SettingsManager {
                 new ComponentName(mContext, PaymentStubService.class),
                 enabled ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 PackageManager.DONT_KILL_APP);
+    }
+
+    // === Scheduled freeze (time-of-day auto freeze / unfreeze) ===
+
+    public boolean getScheduledFreezeEnabled() {
+        return mStorage.getBoolean(LocalStorageManager.PREF_SCHEDULED_FREEZE_ENABLED);
+    }
+
+    // Minute of the day (0..1439), or -1 if not set
+    public int getScheduledFreezeTime() {
+        return mStorage.getInt(LocalStorageManager.PREF_SCHEDULED_FREEZE_TIME);
+    }
+
+    public int getScheduledUnfreezeTime() {
+        return mStorage.getInt(LocalStorageManager.PREF_SCHEDULED_UNFREEZE_TIME);
+    }
+
+    public void setScheduledFreezeEnabled(boolean enabled) {
+        mStorage.setBoolean(LocalStorageManager.PREF_SCHEDULED_FREEZE_ENABLED, enabled);
+        scheduleScheduledFreeze();
+    }
+
+    public void setScheduledFreezeTime(int minuteOfDay) {
+        mStorage.setInt(LocalStorageManager.PREF_SCHEDULED_FREEZE_TIME, minuteOfDay);
+        scheduleScheduledFreeze();
+    }
+
+    public void setScheduledUnfreezeTime(int minuteOfDay) {
+        mStorage.setInt(LocalStorageManager.PREF_SCHEDULED_UNFREEZE_TIME, minuteOfDay);
+        scheduleScheduledFreeze();
+    }
+
+    // (Re-)schedule the daily alarms. Safe to call any time.
+    public void scheduleScheduledFreeze() {
+        android.app.AlarmManager am = mContext.getSystemService(android.app.AlarmManager.class);
+        cancelScheduledFreeze();
+
+        if (!getScheduledFreezeEnabled()) {
+            return;
+        }
+        int freezeMin = getScheduledFreezeTime();
+        int unfreezeMin = getScheduledUnfreezeTime();
+        if (freezeMin < 0 && unfreezeMin < 0) {
+            return;
+        }
+        if (freezeMin >= 0) {
+            scheduleOne(am, ScheduledFreezeReceiver.ACTION_SCHEDULED_FREEZE, freezeMin, 1);
+        }
+        if (unfreezeMin >= 0) {
+            scheduleOne(am, ScheduledFreezeReceiver.ACTION_SCHEDULED_UNFREEZE, unfreezeMin, 2);
+        }
+    }
+
+    // Cancel all scheduled freeze alarms
+    public void cancelScheduledFreeze() {
+        android.app.AlarmManager am = mContext.getSystemService(android.app.AlarmManager.class);
+        cancelOne(am, ScheduledFreezeReceiver.ACTION_SCHEDULED_FREEZE, 1);
+        cancelOne(am, ScheduledFreezeReceiver.ACTION_SCHEDULED_UNFREEZE, 2);
+    }
+
+    private void scheduleOne(android.app.AlarmManager am, String action, int minuteOfDay, int requestCode) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, minuteOfDay / 60);
+        cal.set(java.util.Calendar.MINUTE, minuteOfDay % 60);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        if (cal.getTimeInMillis() <= System.currentTimeMillis()) {
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
+        }
+        Intent intent = new Intent(action).setPackage(mContext.getPackageName());
+        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(mContext, requestCode, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        am.setRepeating(android.app.AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(),
+                android.app.AlarmManager.INTERVAL_DAY, pi);
+    }
+
+    private void cancelOne(android.app.AlarmManager am, String action, int requestCode) {
+        Intent intent = new Intent(action).setPackage(mContext.getPackageName());
+        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(mContext, requestCode, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        am.cancel(pi);
     }
 }

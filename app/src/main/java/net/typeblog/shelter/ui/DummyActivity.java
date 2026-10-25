@@ -66,6 +66,9 @@ public class DummyActivity extends Activity {
     public static final String PUBLIC_UNFREEZE_AND_LAUNCH = "net.typeblog.shelter.action.PUBLIC_UNFREEZE_AND_LAUNCH";
     public static final String PUBLIC_FREEZE_ALL = "net.typeblog.shelter.action.PUBLIC_FREEZE_ALL";
     public static final String FREEZE_ALL_IN_LIST = "net.typeblog.shelter.action.FREEZE_ALL_IN_LIST";
+    // Freeze / unfreeze ALL third-party apps in the work profile at once
+    public static final String PUBLIC_FREEZE_ALL_APPS = "net.typeblog.shelter.action.PUBLIC_FREEZE_ALL_APPS";
+    public static final String PUBLIC_UNFREEZE_ALL_APPS = "net.typeblog.shelter.action.PUBLIC_UNFREEZE_ALL_APPS";
     // If we use the same intent for parent -> profile and profile -> parent, the user will
     // be prompted with the action chooser with only one choice in it when the intent is
     // forwarded by Utility.transferIntentToProfile()
@@ -79,7 +82,9 @@ public class DummyActivity extends Activity {
     private static final List<String> ACTIONS_ALLOWED_WITHOUT_SIGNATURE = Arrays.asList(
             FINALIZE_PROVISION,
             PUBLIC_FREEZE_ALL,
-            PUBLIC_UNFREEZE_AND_LAUNCH);
+            PUBLIC_UNFREEZE_AND_LAUNCH,
+            PUBLIC_FREEZE_ALL_APPS,
+            PUBLIC_UNFREEZE_ALL_APPS);
 
     // Only these actions are allowed to be called from the same process (pre-registered)
     // without a valid signature
@@ -196,6 +201,10 @@ public class DummyActivity extends Activity {
             actionUnfreezeAndLaunch();
         } else if (PUBLIC_FREEZE_ALL.equals(intent.getAction())) {
             actionPublicFreezeAll();
+        } else if (PUBLIC_FREEZE_ALL_APPS.equals(intent.getAction())) {
+            actionFreezeAllApps(true);
+        } else if (PUBLIC_UNFREEZE_ALL_APPS.equals(intent.getAction())) {
+            actionFreezeAllApps(false);
         } else if (FREEZE_ALL_IN_LIST.equals(intent.getAction())) {
             actionFreezeAllInList();
         } else if (START_FILE_SHUTTLE.equals(intent.getAction()) || START_FILE_SHUTTLE_2.equals(intent.getAction())) {
@@ -570,6 +579,36 @@ public class DummyActivity extends Activity {
             Toast.makeText(this, R.string.freeze_all_success, Toast.LENGTH_SHORT).show();
             finish();
         } else {
+            finish();
+        }
+    }
+
+    // Freeze or unfreeze ALL third-party apps in the work profile at once.
+    // System apps and this app itself are never touched, so the profile
+    // can never be broken by this operation.
+    private void actionFreezeAllApps(boolean freeze) {
+        if (!mIsProfileOwner) {
+            // Forward to the DummyActivity inside the work profile
+            Intent intent = new Intent(freeze ? PUBLIC_FREEZE_ALL_APPS : PUBLIC_UNFREEZE_ALL_APPS);
+            Utility.transferIntentToProfile(this, intent);
+            startActivity(intent);
+            finish();
+        } else {
+            PackageManager pm = getPackageManager();
+            List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(PackageManager.GET_META_DATA);
+            ComponentName admin = new ComponentName(this, ShelterDeviceAdminReceiver.class);
+            int frozen = 0;
+            for (android.content.pm.PackageInfo pkg : packages) {
+                if (pkg.applicationInfo == null ||
+                        (pkg.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                        pkg.packageName.equals(getPackageName())) {
+                    continue;
+                }
+                mPolicyManager.setApplicationHidden(admin, pkg.packageName, freeze);
+                frozen++;
+            }
+            Toast.makeText(this, freeze ? R.string.freeze_all_apps_success : R.string.unfreeze_all_apps_success,
+                    Toast.LENGTH_SHORT).show();
             finish();
         }
     }

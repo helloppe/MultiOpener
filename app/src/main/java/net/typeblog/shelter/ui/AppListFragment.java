@@ -524,8 +524,9 @@ public class AppListFragment extends BaseFragment {
 
         // Then tell the launcher to add the shortcut
         // The icon gets a "multi-opener" badge so the clone is easy to tell apart
+        // The label gets a "（小号）" suffix so the two spaces are easy to distinguish
         Utility.createLauncherShortcut(getContext(), launchIntent,
                 Icon.createWithBitmap(Utility.addMultiOpenerBadge(icon)), id,
-                app.getLabel());
+                getString(R.string.clone_shortcut_label, app.getLabel()));
     }
 }

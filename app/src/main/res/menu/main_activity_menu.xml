@@ -15,6 +15,18 @@
         app:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/main_menu_freeze_all_apps"
+        android:icon="@drawable/ic_freeze_tinted"
+        android:title="@string/main_menu_freeze_all_apps"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/main_menu_unfreeze_all_apps"
+        android:icon="@drawable/ic_lock_open_white_24dp"
+        android:title="@string/main_menu_unfreeze_all_apps"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/main_menu_settings"
         android:icon="@drawable/ic_settings_tinted_24dp"
         android:title="@string/settings"

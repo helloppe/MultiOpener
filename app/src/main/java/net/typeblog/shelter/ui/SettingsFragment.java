@@ -41,6 +41,9 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Prefer
     private static final String SETTINGS_AUTO_FREEZE_DELAY = "settings_auto_freeze_delay";
     private static final String SETTINGS_SKIP_FOREGROUND = "settings_dont_freeze_foreground";
     private static final String SETTINGS_PAYMENT_STUB = "settings_payment_stub";
+    private static final String SETTINGS_SCHEDULED_FREEZE_ENABLED = "settings_scheduled_freeze_enabled";
+    private static final String SETTINGS_SCHEDULED_FREEZE_TIME = "settings_scheduled_freeze_time";
+    private static final String SETTINGS_SCHEDULED_UNFREEZE_TIME = "settings_scheduled_unfreeze_time";
 
     private static final int[] AUTO_FREEZE_DELAY_SECONDS = new int[]{0, 60, 2 * 60, 5 * 60};
 
@@ -52,8 +55,11 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Prefer
     private CheckBoxPreference mPrefAutoFreezeService = null;
     private CheckBoxPreference mPrefSkipForeground = null;
     private CheckBoxPreference mPrefPaymentStub = null;
+    private CheckBoxPreference mPrefScheduledFreeze = null;
 
     private DropDownPreference mPrefAutoFreezeDelay = null;
+    private Preference mPrefScheduledFreezeTime = null;
+    private Preference mPrefScheduledUnfreezeTime = null;
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
@@ -114,6 +120,18 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Prefer
         mPrefSkipForeground.setChecked(mManager.getSkipForegroundEnabled());
         mPrefSkipForeground.setOnPreferenceChangeListener(this);
 
+        // === Scheduled freeze ===
+        mPrefScheduledFreeze = (CheckBoxPreference) findPreference(SETTINGS_SCHEDULED_FREEZE_ENABLED);
+        mPrefScheduledFreeze.setChecked(mManager.getScheduledFreezeEnabled());
+        mPrefScheduledFreeze.setOnPreferenceChangeListener(this);
+        mPrefScheduledFreezeTime = findPreference(SETTINGS_SCHEDULED_FREEZE_TIME);
+        mPrefScheduledFreezeTime.setOnPreferenceClickListener(
+                (pref) -> showTimePicker(false));
+        mPrefScheduledUnfreezeTime = findPreference(SETTINGS_SCHEDULED_UNFREEZE_TIME);
+        mPrefScheduledUnfreezeTime.setOnPreferenceClickListener(
+                (pref) -> showTimePicker(true));
+        updateScheduledFreezeTimes();
+
         // Disable FileSuttle on Q for now
         // Supported on R and beyond
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
@@ -136,6 +154,46 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Prefer
         // Update all preferences that may change when returning
         // i.e. preferences that open another dialog for picking
         updateAutoFreezeDelay();
+        updateScheduledFreezeTimes();
+    }
+
+    private void updateScheduledFreezeTimes() {
+        int freezeMin = mManager.getScheduledFreezeTime();
+        int unfreezeMin = mManager.getScheduledUnfreezeTime();
+        mPrefScheduledFreezeTime.setSummary(freezeMin < 0
+                ? getString(R.string.scheduled_freeze_not_set)
+                : formatTime(freezeMin));
+        mPrefScheduledUnfreezeTime.setSummary(unfreezeMin < 0
+                ? getString(R.string.scheduled_freeze_not_set)
+                : formatTime(unfreezeMin));
+    }
+
+    private String formatTime(int minuteOfDay) {
+        return String.format(java.util.Locale.getDefault(), "%02d:%02d", minuteOfDay / 60, minuteOfDay % 60);
+    }
+
+    private boolean showTimePicker(boolean isUnfreeze) {
+        int current = isUnfreeze ? mManager.getScheduledUnfreezeTime() : mManager.getScheduledFreezeTime();
+        int hour = 20, minute = 0;
+        if (current >= 0) {
+            hour = current / 60;
+            minute = current % 60;
+        } else if (isUnfreeze) {
+            // A sensible default: unfreeze at 7:00
+            hour = 7;
+        }
+        new android.app.TimePickerDialog(getContext(),
+                (view, h, m) -> {
+                    int minuteOfDay = h * 60 + m;
+                    if (isUnfreeze) {
+                        mManager.setScheduledUnfreezeTime(minuteOfDay);
+                    } else {
+                        mManager.setScheduledFreezeTime(minuteOfDay);
+                    }
+                    updateScheduledFreezeTimes();
+                },
+                hour, minute, true).show();
+        return true;
     }
 
     private void updateAutoFreezeDelay() {
@@ -226,6 +284,12 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Prefer
             return true;
         } else if (preference == mPrefPaymentStub) {
             mManager.setPaymentStubEnabled((boolean) newState);
+            return true;
+        } else if (preference == mPrefScheduledFreeze) {
+            mManager.setScheduledFreezeEnabled((boolean) newState);
+            if ((boolean) newState) {
+                updateScheduledFreezeTimes();
+            }
             return true;
         } else {
             return false;

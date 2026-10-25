@@ -396,6 +396,30 @@ public class MainActivity extends AppCompatActivity {
             intent.setComponent(new ComponentName(this, DummyActivity.class));
             startActivity(intent);
             return true;
+        } else if (itemId == R.id.main_menu_freeze_all_apps) {
+            new AlertDialog.Builder(this)
+                    .setMessage(R.string.freeze_all_apps_confirm)
+                    .setPositiveButton(R.string.first_run_alert_continue,
+                            (dialog, which) -> {
+                                Intent intent = new Intent(DummyActivity.PUBLIC_FREEZE_ALL_APPS);
+                                intent.setComponent(new ComponentName(this, DummyActivity.class));
+                                startActivity(intent);
+                            })
+                    .setNegativeButton(R.string.first_run_alert_cancel, null)
+                    .show();
+            return true;
+        } else if (itemId == R.id.main_menu_unfreeze_all_apps) {
+            new AlertDialog.Builder(this)
+                    .setMessage(R.string.unfreeze_all_apps_confirm)
+                    .setPositiveButton(R.string.first_run_alert_continue,
+                            (dialog, which) -> {
+                                Intent intent = new Intent(DummyActivity.PUBLIC_UNFREEZE_ALL_APPS);
+                                intent.setComponent(new ComponentName(this, DummyActivity.class));
+                                startActivity(intent);
+                            })
+                    .setNegativeButton(R.string.first_run_alert_cancel, null)
+                    .show();
+            return true;
         } else if (itemId == R.id.main_menu_settings) {
             Intent settingsIntent = new Intent(this, SettingsActivity.class);
             Bundle extras = new Bundle();

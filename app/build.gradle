@@ -1,11 +1,11 @@
 apply plugin: 'com.android.application'
 
 def getVersionCode = { ->
-    return 101
+    return 110
 }
 
 def getVersionName = { ->
-    return "1.0.1"
+    return "1.1.0"
 }
 
 android {

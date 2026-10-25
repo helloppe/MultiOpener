@@ -28,7 +28,7 @@
 
 ```bash
 # 拉取子模块
-git submodule update --init
+git 子模块更新 --初始化
 
 # 构建 release APK
 gradle assembleRelease
@@ -42,9 +42,4 @@ gradle assembleRelease
 
 - 本项目（基于 Shelter 改造）：**GNU GPL v3.0**，见 [LICENSE](LICENSE)
 - SetupWizardLibrary 组件库：Apache-2.0（Google AOSP）
-- 上游项目：Shelter by PeterCxy（https://gitea.angry.im/PeterCxy/Shelter）
-
-## 致谢
-
-- [Shelter](https://gitea.angry.im/PeterCxy/Shelter) — 本项目的上游开源基础
-- [SetupWizardLibrary](https://gitea.angry.im/PeterCxy/SetupWizardLibrary) — AOSP 设置向导组件
+  

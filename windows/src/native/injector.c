@@ -1,34 +1,39 @@
 /* ============================================================
- * injector.exe —— 挂起启动目标程序 → 注入 hook.dll → 恢复运行
- * （MultiOpener 自研组件，GPL-3.0）
+ * injector.exe —— 启动目标程序并注入 hook.dll（MultiOpener 自研组件，GPL-3.0）
  *
- * 用法：injector.exe "<目标exe路径>" ["<hook.dll 路径>"]
- * 输出：启动成功的进程 PID（stdout 首行）
+ * 用法：
+ *   injector.exe "<目标exe路径>" ["<hook.dll 路径>"] ["@延迟毫秒"]
+ *   输出：启动成功的进程 PID（stdout 首行）
  *
- * 流程：CreateProcess(CREATE_SUSPENDED) → 远程写 hook.dll
- * 全路径 → CreateRemoteThread(LoadLibraryA) → 等待加载完成 →
- * ResumeThread → 打印 PID。
+ * 两种注入模式：
+ *   1) 挂起模式（默认）：CreateProcess(CREATE_SUSPENDED) → 写 hook.dll 路径 →
+ *      CreateRemoteThread(LoadLibraryA) → ResumeThread。
+ *      适合一般软件；但进程挂起时远程线程不执行，hook 生效时机与主线程竞争。
+ *   2) 后注入模式（第三参数 @ms）：CreateProcess 正常启动 → Sleep(ms) →
+ *      CreateRemoteThread(LoadLibraryA) → hook 在目标创建单实例互斥体前生效，
+ *      适合启动早期就创建互斥体的软件（如游戏启动器）。
  *
- * 编译：D:\tcc\win64\tcc.exe -o injector.exe injector.c -lkernel32
+ * 编译：D:\w64devkit\bin\gcc.exe -O2 -o injector.exe injector.c -lkernel32
  * ============================================================ */
 #include <windows.h>
 #include <wchar.h>
 #include <stdio.h>
+#include <string.h>
 
 int main(void) {
     LPWSTR cmd = GetCommandLineW();
     WCHAR exePath[2048] = {0};
     WCHAR hookPath[2048] = {0};
     WCHAR args[4096] = {0};
+    WCHAR delayArg[64] = {0};
     int argi = 0;
 
-    /* 手工解析命令行（兼容带空格路径） */
     LPWSTR p = cmd;
     if (*p == L'"') { p++; while (*p && *p != L'"') p++; if (*p) p++; }
     else { while (*p && *p != L' ') p++; }
     while (*p == L' ') p++;
 
-    for (argi = 0; argi < 2 && *p; argi++) {
+    for (argi = 0; argi < 3 && *p; argi++) {
         WCHAR buf[2048] = {0};
         int i = 0;
         if (*p == L'"') {
@@ -38,15 +43,26 @@ int main(void) {
         } else {
             while (*p && *p != L' ') { if (i < 2047) buf[i++] = *p; p++; }
         }
-        if (argi == 0) wcscpy(exePath, buf); else wcscpy(hookPath, buf);
+        if (argi == 0) wcscpy(exePath, buf);
+        else if (argi == 1) wcscpy(hookPath, buf);
+        else wcscpy(delayArg, buf);
         while (*p == L' ') p++;
     }
-    /* 剩余全部作为目标程序的参数 */
     if (*p) wcscpy(args, p);
 
     if (exePath[0] == 0) {
-        fprintf(stderr, "usage: injector.exe <exe> [hook.dll]\n");
+        fprintf(stderr, "usage: injector.exe <exe> [hook.dll] [@delayMs]\n");
         return 1;
+    }
+
+    /* 解析后注入延迟 */
+    int delayMs = -1;
+    if (delayArg[0] == L'@') {
+        delayMs = 0;
+        for (int i = 1; delayArg[i]; i++) {
+            if (delayArg[i] >= L'0' && delayArg[i] <= L'9') delayMs = delayMs * 10 + (delayArg[i] - L'0');
+            else break;
+        }
     }
 
     /* 默认 hook.dll 与 injector.exe 同目录 */
@@ -61,7 +77,7 @@ int main(void) {
         return 2;
     }
 
-    /* 拼目标命令行：exe（带引号）+ 参数 */
+    /* 拼目标命令行 */
     WCHAR targetCmd[4096] = {0};
     if (wcsrchr(exePath, L' ')) { wcscat(targetCmd, L"\""); wcscat(targetCmd, exePath); wcscat(targetCmd, L"\""); }
     else wcscat(targetCmd, exePath);
@@ -72,13 +88,18 @@ int main(void) {
     ZeroMemory(&si, sizeof(si)); si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(NULL, targetCmd, NULL, NULL, FALSE, CREATE_SUSPENDED,
+    DWORD flags = (delayMs < 0) ? CREATE_SUSPENDED : 0;
+    if (!CreateProcessW(NULL, targetCmd, NULL, NULL, FALSE, flags,
                         NULL, NULL, &si, &pi)) {
         fprintf(stderr, "CreateProcess failed: %lu\n", GetLastError());
         return 3;
     }
 
-    /* hook 路径转 ANSI，写到目标进程 */
+    /* 后注入模式：先让目标跑 delayMs，再注入 */
+    if (delayMs >= 0) {
+        Sleep((DWORD)delayMs);
+    }
+
     char hookAnsi[1024] = {0};
     WideCharToMultiByte(CP_ACP, 0, hookPath, -1, hookAnsi, 1024, NULL, NULL);
     SIZE_T lenA = strlen(hookAnsi) + 1;
@@ -114,11 +135,12 @@ int main(void) {
     CloseHandle(hThread);
     VirtualFreeEx(pi.hProcess, remote, 0, MEM_RELEASE);
 
-    ResumeThread(pi.hThread);
+    if (delayMs < 0) {
+        ResumeThread(pi.hThread);
+    }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
-    /* 输出 PID 供 Java 读取 */
     printf("%lu\n", pi.dwProcessId);
     return 0;
 }

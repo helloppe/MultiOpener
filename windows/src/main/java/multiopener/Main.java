@@ -9,6 +9,7 @@ import java.awt.Toolkit;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.io.IOException;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -126,7 +127,7 @@ public class Main extends JFrame {
         detectCommonApps();
         refreshTable();
         logLine("欢迎使用通用多开器（Windows 版）v" + VERSION + "，已加载 " + cfg.apps.size() + " 个软件。");
-        logLine("提示：微信等单实例软件选「复制目录启动」；一键冻结=挂起全部多开实例。");
+        logLine("提示：所有软件默认「智能多开」，一个不行自动换下一个；一键冻结=挂起全部多开实例。");
         setVisible(true);
     }
 
@@ -255,8 +256,8 @@ public class Main extends JFrame {
                         if ("copy".equals(a.mode)) {
                             sleep(3000);
                             if (!proc.isAlive()) {
-                                logLine("  ⚠ 第 " + k + " 个实例退出了——该软件可能是「互斥体级」单实例（如 PCL2），");
-                                logLine("    请把启动方式改成「沙盒多开」（需安装 Sandboxie-Plus）或「智能多开」。");
+                                logLine("  ⚠ 第 " + k + " 个实例退出了——该软件可能是「互斥体级」单实例（如游戏启动器），");
+                                logLine("    请把启动方式改成「互斥体绕过」（内置，无需装任何软件）或「智能多开」。");
                             }
                         }
                     } catch (Exception e) {
@@ -455,48 +456,34 @@ public class Main extends JFrame {
     }
 
     // ---------- 工具 ----------
+    /** 自动检测本机常见软件；所有软件统一用「智能多开」，
+     *  程序自己逐级尝试 直接 → 复制改名 → 互斥体绕过，不按软件指定方式 */
     private void detectCommonApps() {
         String localAppData = System.getenv("LOCALAPPDATA");
         String windir = System.getenv("WINDIR");
-        // 每个候选: 路径 + 名称 + 默认多开方式
-        // copy=复制目录+改名（绕进程名检测，适合 PCL/微信）
-        // profile=数据目录隔离（适合 Chrome/Edge 等 Chromium 软件）
-        // direct=直接启动（无单实例限制的软件）
+        // 每个候选: 路径 + 名称（多开方式统一 auto，智能自动换招）
         String[][] candidates = {
-                {"D:/Weixin/Weixin.exe", "微信", "copy"},
-                {"D:/QQ/QQ.exe", "QQ", "direct"},
-                {"C:/Program Files/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
-                {"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
-                {"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "Edge", "profile"},
-                {"C:/Program Files/Microsoft/Edge/Application/msedge.exe", "Edge", "profile"},
-                {windir + "/notepad.exe", "记事本", "direct"},
-                {"D:/Plain Craft Launcher 2/Plain Craft Launcher.exe", "PCL", "copy"},
-                {"D:/PCL/Plain Craft Launcher.exe", "PCL", "copy"},
-                {"D:/PCL2/Plain Craft Launcher.exe", "PCL", "copy"},
-                {"C:/Program Files (x86)/Plain Craft Launcher 2/Plain Craft Launcher.exe", "PCL", "copy"},
+                {"D:/Weixin/Weixin.exe", "微信"},
+                {"D:/QQ/QQ.exe", "QQ"},
+                {"C:/Program Files/Google/Chrome/Application/chrome.exe", "Chrome"},
+                {"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", "Chrome"},
+                {"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "Edge"},
+                {"C:/Program Files/Microsoft/Edge/Application/msedge.exe", "Edge"},
+                {windir + "/notepad.exe", "记事本"},
+                {"D:/Plain Craft Launcher 2/Plain Craft Launcher.exe", "游戏启动器"},
+                {"D:/PCL/Plain Craft Launcher.exe", "游戏启动器"},
+                {"D:/PCL2/Plain Craft Launcher.exe", "游戏启动器"},
+                {"C:/Program Files (x86)/Plain Craft Launcher 2/Plain Craft Launcher.exe", "游戏启动器"},
+                {localAppData + "/Google/Chrome/Application/chrome.exe", "Chrome"},
+                {localAppData + "/Programs/WeChat/WeChat.exe", "微信"},
         };
-        java.util.Set<String> added = new java.util.HashSet<>();
-        if (localAppData != null) {
-            for (String[] cand : new String[][]{
-                    {localAppData + "/Google/Chrome/Application/chrome.exe", "Chrome", "profile"},
-                    {localAppData + "/Programs/WeChat/WeChat.exe", "微信", "copy"}}) {
-                File f = new File(cand[0]);
-                if (f.isFile()) {
-                    boolean exists = cfg.apps.stream().anyMatch(a -> a.path.equalsIgnoreCase(f.getAbsolutePath()));
-                    if (!exists) {
-                        cfg.apps.add(new AppEntry(cand[1], f.getAbsolutePath(), cand[2], 2));
-                        added.add(f.getAbsolutePath().toLowerCase());
-                    }
-                }
-            }
-        }
         for (String[] cand : candidates) {
+            if (cand[0] == null) continue;
             File f = new File(cand[0]);
             if (!f.isFile()) continue;
-            if (added.contains(f.getAbsolutePath().toLowerCase())) continue;
             boolean exists = cfg.apps.stream().anyMatch(a -> a.path.equalsIgnoreCase(f.getAbsolutePath()));
             if (!exists) {
-                cfg.apps.add(new AppEntry(cand[1], f.getAbsolutePath(), cand[2], 2));
+                cfg.apps.add(new AppEntry(cand[1], f.getAbsolutePath(), "auto", 2));
             }
         }
     }
@@ -505,23 +492,20 @@ public class Main extends JFrame {
         JOptionPane.showMessageDialog(this,
                 "通用多开器（Windows 版）v" + VERSION + "\n\n"
                 + "【怎么用】\n"
-                + "1. 列表自动检测微信、QQ、Chrome、Edge、记事本、PCL；\n"
+                + "1. 列表自动检测微信、QQ、Chrome、Edge、记事本、游戏启动器；\n"
                 + "   没有的用「添加软件」自己选（任意 .exe）。\n"
                 + "2. 双击单元格可改软件名、多开方式、实例数。\n"
                 + "3. 点「多开所选」或「全部多开」启动多实例。\n\n"
-                + "【多开方式（一种不行就换另一种）】\n"
+                + "【多开方式】\n"
+                + "· 智能多开（默认，推荐）：自动逐级尝试\n"
+                + "  直接启动 → 复制目录+改名 → 互斥体绕过（内置），\n"
+                + "  一个不行自动换下一个，几乎覆盖所有软件\n"
                 + "· 直接启动：普通启动，适合无单实例限制的软件\n"
-                + "· 复制目录+改名：复制安装目录并把 exe 改名后启动，\n"
-                + "  绕过按进程名检测单实例的软件（微信等）\n"
-                + "· 数据目录隔离：给 Chrome/Edge 加 --user-data-dir，\n"
-                + "  每个实例独立数据目录（Chromium 系软件专用）\n"
-                + "· 互斥体绕过（内置）：挂起启动 → 注入自研组件 → 给互斥体\n"
-                + "  改名，连互斥体级单实例（PCL2 等）都能多开，\n"
-                + "  无需安装任何外部软件\n"
-                + "· 沙盒多开：每个实例放独立 Sandboxie 沙盒，\n"
-                + "  需要时自选（免费开源，sandboxie-plus.com）\n"
-                + "· 智能多开：自动逐级尝试 直接启动 → 复制改名 → 互斥体绕过，\n"
-                + "  这个不行就自动换下一个，几乎覆盖所有软件\n\n"
+                + "· 复制目录+改名：复制安装目录并把 exe 改名后启动，绕进程名检测\n"
+                + "· 数据目录隔离：给浏览器类软件加 --user-data-dir，独立数据目录\n"
+                + "· 互斥体绕过（内置）：挂起启动 → 注入自研组件 → 给互斥体改名，\n"
+                + "  互斥体级单实例软件也能多开，无需安装任何外部软件\n"
+                + "· 沙盒多开：每个实例放独立 Sandboxie 沙盒（可选，需要时自选）\n\n"
                 + "【功能对照（安卓版 → Windows 版）】\n"
                 + "· 一键冻结/解冻 → 挂起/恢复全部多开实例\n"
                 + "· 定时冻结 → 每日到点自动挂起/恢复\n"
@@ -529,17 +513,27 @@ public class Main extends JFrame {
                 + "· 检查更新 → 读取 GitHub Release 对比版本\n"
                 + "· 深色主题 → 一键切换\n\n"
                 + "【注意】\n"
-                + "· 微信用「复制目录+改名」；Chrome/Edge 用「数据目录隔离」；\n"
-                + "· PCL2 等互斥体级单实例软件用「互斥体绕过」（内置组件）；\n"
+                + "· 所有软件默认「智能多开」，一个不行自动换下一个，不用自己选；\n"
                 + "· 个别安全软件可能拦截注入，出现拦截时把程序目录加入白名单；\n"
                 + "· 复制目录时 .minecraft 等大目录会用链接共享，不整份复制。\n"
-                + "· 「智能多开」会自动试完所有招数，最适合懒得选的情况。\n"
                 + "· 多开账号请遵守软件官方使用条款。\n\n"
                 + "完全开源（GPL-3.0）：https://github.com/helloppe/MultiOpener",
                 "帮助", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void logLine(String msg) {
+        // 同步写一份到日志文件，方便排查
+        try {
+            File dir = Config.configFile().getParentFile();
+            if (dir != null) {
+                File logFile = new File(dir, "launcher.log");
+                java.nio.file.Files.write(logFile.toPath(), (msg + "\n").getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8),
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND);
+            }
+        } catch (IOException ignored) {
+        }
         SwingUtilities.invokeLater(() -> {
             String ts = java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
             log.append("[" + ts + "] " + msg + "\n");

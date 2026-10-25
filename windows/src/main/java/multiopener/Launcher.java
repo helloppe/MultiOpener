@@ -29,9 +29,9 @@ public class Launcher {
     /** 启动一个实例，返回进程对象（失败抛异常）。
      *  多开方法（按 AppEntry.mode）：
      *  direct  直接启动（无单实例限制的软件）
-     *  copy    复制目录 + 改名 exe 启动（绕过按进程名检测单实例：PCL、微信）
-     *  profile 数据目录隔离启动（Chromium 系：Chrome/Edge 加 --user-data-dir）
-     *  sandbox 沙盒多开（Sandboxie-Plus，绕互斥体级单实例：PCL2 等）
+     *  copy    复制目录 + 改名 exe 启动（绕过按进程名检测单实例的软件）
+     *  profile 数据目录隔离启动（浏览器类软件加 --user-data-dir）
+     *  sandbox 沙盒多开（Sandboxie-Plus，绕互斥体级单实例）
      *  mutex   互斥体绕过（自研内置组件：挂起启动→注入 hook→改互斥体名）
      *  auto    智能多开：自动尝试 直接启动 → 复制目录+改名 → 互斥体绕过 */
     public static Process launch(AppEntry app, int index) throws IOException {
@@ -69,7 +69,7 @@ public class Launcher {
         return proc;
     }
 
-    /** 智能多开：直接启动 → 复制目录+改名 → 沙盒，逐级尝试 */
+    /** 智能多开：直接启动 → 复制目录+改名 → 互斥体绕过，逐级尝试 */
     private static Process tryChain(AppEntry app, int index) throws IOException {
         String exeName = new File(app.path).getName();
         // 1) 无同名进程时直接启动；若 4 秒内退出（被单实例检测拦）则换下一招
@@ -84,16 +84,17 @@ public class Launcher {
             Process p = launchCopy(app, index);
             if (aliveAfter4s(p)) { lastMode = "copy"; return p; }
         } catch (IOException ignored) { }
-        // 3) 互斥体绕过（自研注入，绕互斥体级单实例：PCL2 等，无需装任何软件）
+        // 3) 互斥体绕过（注入原版，最后兜底；对会自检注入的软件慎用）
         Process p = launchMutex(app, index);
         lastMode = "mutex";
         return p;
     }
 
-    /** 等 4 秒：返回 true 表示进程还活着（启动成功）；false 表示已退出（被拦截） */
+    /** 等 8 秒：返回 true 表示进程还活着（启动成功）；false 表示已退出（被拦截）。
+     *  8 秒覆盖 .NET/Java 软件的冷启动时间，避免慢启动误判 */
     private static boolean aliveAfter4s(Process p) {
         try {
-            return !p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS);
+            return !p.waitFor(8, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return p.isAlive();
@@ -120,7 +121,42 @@ public class Launcher {
             throw new IOException("缺少内置组件 injector.exe / hook.dll（互斥体绕过）——请下载完整发布包");
         }
         Process p = new ProcessBuilder(injector.getAbsolutePath(),
-                exe.getAbsolutePath(), hook.getAbsolutePath())
+                exe.getAbsolutePath(), hook.getAbsolutePath(), "@150")
+                .redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8).trim();
+        try {
+            p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("互斥体绕过启动被中断");
+        }
+        if (p.exitValue() != 0) {
+            throw new IOException("互斥体绕过启动失败: " + (out.isEmpty() ? "exit " + p.exitValue() : out));
+        }
+        int nl = out.indexOf('\n');
+        String line = (nl > 0 ? out.substring(0, nl) : out).trim();
+        try {
+            lastMutexPid = Long.parseLong(line);
+        } catch (NumberFormatException e) {
+            throw new IOException("互斥体绕过启动失败（无法识别进程）: " + out);
+        }
+        if (lastMutexPid <= 0) throw new IOException("互斥体绕过启动失败: " + out);
+        return p;
+    }
+
+    /** 互斥体绕过 + 改名副本：建副本（进程名不同）后注入 hook（互斥体改名）。
+     *  双保险组合，对付"固定互斥体 + 进程名级"双重单实例检测的软件 */
+    private static Process launchMutexClone(AppEntry app, int index) throws IOException {
+        File renamedExe = createClone(app, index);
+        File injector = findNativeTool("injector.exe");
+        File hook = findNativeTool("hook.dll");
+        if (injector == null || hook == null) {
+            throw new IOException("缺少内置组件 injector.exe / hook.dll（互斥体绕过）——请下载完整发布包");
+        }
+        Process p = new ProcessBuilder(injector.getAbsolutePath(),
+                renamedExe.getAbsolutePath(), hook.getAbsolutePath(), "@150")
+                .directory(renamedExe.getParentFile())
                 .redirectErrorStream(true).start();
         String out = new String(p.getInputStream().readAllBytes(),
                 java.nio.charset.StandardCharsets.UTF_8).trim();
@@ -145,11 +181,25 @@ public class Launcher {
     }
 
     /** 在程序目录里找自研内置组件（app-image 时在 app/ 下，源码运行时在工程目录下） */
+    /** 内置组件所在目录：优先 jar 所在目录（jpackage 的 app/ 目录，组件就放在这里），
+     *  不依赖启动时的工作目录，从任何位置运行都能找到 */
+    private static File nativeDir() {
+        try {
+            java.net.URL url = Launcher.class.getProtectionDomain().getCodeSource().getLocation();
+            File jar = new File(url.toURI());
+            if (jar.isFile()) return jar.getParentFile();
+        } catch (Exception ignored) {
+        }
+        return new File(System.getProperty("user.dir"));
+    }
+
     private static File findNativeTool(String name) {
-        File cwd = new File(System.getProperty("user.dir"));
+        File dir = nativeDir();
         File[] cands = {
-                new File(cwd, "app/" + name),
-                new File(cwd, name),
+                new File(dir, name),                                  // app/ 内
+                new File(dir.getParentFile(), "app/" + name),         // 程序根/app
+                new File(System.getProperty("user.dir"), "app/" + name),
+                new File(System.getProperty("user.dir"), name),
         };
         for (File f : cands) if (f.isFile()) return f;
         return null;
@@ -213,7 +263,7 @@ public class Launcher {
         }
     }
 
-    /** 数据目录隔离启动：给 Chromium 系软件加 --user-data-dir，每次实例独立数据目录 */
+    /** 数据目录隔离启动：给浏览器类软件加 --user-data-dir，每次实例独立数据目录 */
     private static Process launchProfile(AppEntry app, int index) throws IOException {
         File exe = new File(app.path);
         if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
@@ -228,10 +278,15 @@ public class Launcher {
 
     /** 复制目录 + 改名 exe 启动 */
     private static Process launchCopy(AppEntry app, int index) throws IOException {
+        File renamedExe = createClone(app, index);
+        File dstDir = renamedExe.getParentFile();
+        return new ProcessBuilder(renamedExe.getAbsolutePath()).directory(dstDir).start();
+    }
+
+    /** 复制目录 + 改名 exe，返回改名后的副本 exe（进程名不同 → 绕过进程名级单实例检测） */
+    private static File createClone(AppEntry app, int index) throws IOException {
         File exe = new File(app.path);
         if (!exe.isFile()) throw new IOException("找不到程序: " + app.path);
-        // 复制目录启动：复制安装目录，并把 exe 改名为 "原名_多开N.exe" 再启动，
-        // 绕过按进程名/窗口名检测单实例的软件（PCL、微信 4.x 等）
         String safe = app.name.replaceAll("[\\\\/:*?\"<>|]", "_");
         File cloneRoot = new File(Config.configFile().getParentFile(), "clones");
         File dstDir = new File(cloneRoot, safe + "-" + index);
@@ -261,7 +316,6 @@ public class Launcher {
                 }
             }
         }
-        // 改名副本：Weixin.exe -> Weixin_多开1.exe（进程名不同 → 绕过单实例检测）
         String name = exe.getName();
         int dot = name.lastIndexOf('.');
         String stem = dot > 0 ? name.substring(0, dot) : name;
@@ -270,7 +324,56 @@ public class Launcher {
         if (!renamedExe.isFile()) {
             java.nio.file.Files.copy(dstExe.toPath(), renamedExe.toPath());
         }
-        return new ProcessBuilder(renamedExe.getAbsolutePath()).directory(dstDir).start();
+        // 对副本做"互斥体名补丁"：把 <名字>SingletonMutex 的互斥体名按实例编号
+        // 改造成互不相同的名字（等长替换第 2 个字符）。固定互斥体级单实例软件
+        // （游戏启动器等）从此可以无限多开，无需注入任何 DLL。
+        patchSingletonMutex(renamedExe, index);
+        return renamedExe;
+    }
+
+    /** 二进制补丁：把 UTF-16LE 的 "<前缀>SingletonMutex" 字符串第 2 个字符替换成实例号。
+     *  等长替换（不改变文件长度），对无强签名的 .NET 程序安全有效；未命中的程序原样返回。 */
+    private static void patchSingletonMutex(File exe, int index) throws IOException {
+        byte[] data = java.nio.file.Files.readAllBytes(exe.toPath());
+        byte[] marker = "SingletonMutex".getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+        int changed = 0;
+        int searchFrom = 0;
+        while (true) {
+            int pos = indexOf(data, marker, searchFrom);
+            if (pos < 0) break;
+            // 回看前缀：字母数字下划线（UTF-16LE 每字符 2 字节）
+            int start = pos;
+            while (start >= 2 && isWordChar16(data[start - 2]) && isWordChar16(data[start - 1])) start -= 2;
+            int prefixChars = (pos - start) / 2;
+            if (prefixChars >= 1 && prefixChars <= 24) {
+                // 第 2 个字符替换为实例号（等长）
+                int idx = index % 36;
+                char c = (char) (idx < 10 ? '0' + idx : 'A' + idx - 10);
+                byte[] ch = String.valueOf(c).getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+                data[start + 2] = ch[0];
+                data[start + 3] = ch[1];
+                changed++;
+            }
+            searchFrom = pos + 2;
+        }
+        if (changed > 0) {
+            java.nio.file.Files.write(exe.toPath(), data);
+        }
+    }
+
+    private static boolean isWordChar16(byte b) {
+        return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_';
+    }
+
+    private static int indexOf(byte[] hay, byte[] needle, int from) {
+        outer:
+        for (int i = from; i <= hay.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (hay[i + j] != needle[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
     }
 
     /** 判断某个 exe 名（如 Weixin.exe）对应的进程是否已在运行 */

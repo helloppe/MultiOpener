@@ -40,6 +40,6 @@ gradle assembleRelease
 
 ## 开源许可
 
-- 本项目（基于 Shelter 改造）：**GNU GPL v3.0**，见 [LICENSE](LICENSE)
+**GNU GPL v3.0**，见 [LICENSE](LICENSE)
 - SetupWizardLibrary 组件库：Apache-2.0（Google AOSP）
   

@@ -32,7 +32,7 @@ public class Main extends JFrame {
 
     private Config cfg;
     private DefaultTableModel model;
-    private JTextArea log;
+    private static JTextArea log;
     private JComboBox<String> modeBox = new JComboBox<>(new String[]{"直接启动", "复制目录启动", "数据目录隔离", "互斥体绕过", "沙盒多开", "智能多开"});
     private Timer scheduler;
 
@@ -521,7 +521,7 @@ public class Main extends JFrame {
                 "帮助", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    private void logLine(String msg) {
+    public static void logLine(String msg) {
         // 同步写一份到日志文件，方便排查
         try {
             File dir = Config.configFile().getParentFile();

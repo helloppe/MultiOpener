@@ -83,7 +83,10 @@ public class Launcher {
         try {
             Process p = launchCopy(app, index);
             if (aliveAfter4s(p)) { lastMode = "copy"; return p; }
-        } catch (IOException ignored) { }
+            Main.logLine("  copy 启动后 8 秒内退出（可能被单实例检测拦截），换下一招");
+        } catch (IOException e) {
+            Main.logLine("  copy 失败: " + e.getMessage() + "，换下一招");
+        }
         // 3) 互斥体绕过（注入原版，最后兜底；对会自检注入的软件慎用）
         Process p = launchMutex(app, index);
         lastMode = "mutex";
